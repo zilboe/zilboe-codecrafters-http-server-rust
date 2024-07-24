@@ -12,7 +12,19 @@ fn handle_connect(mut stream: TcpStream) {
             eprintln!("recv from connect error");
         }
     }
-    let response = String::from("HTTP/1.1 200 OK\r\n\r\n");
+    let index_html_head = String::from("GET /index.html");
+    let none_head = String::from("GET / ");
+    let mut response = String::new();
+    if read_buff.starts_with(&index_html_head.as_bytes()) {
+        response.push_str("HTTP/1.1 200 OK\r\n\r\n");
+    } else {
+        if read_buff.starts_with(&none_head.as_bytes()) {
+            response.push_str("HTTP/1.1 200 OK\r\n\r\n");
+        } else {
+            response.push_str("HTTP/1.1 404 Not Found\r\n\r\n");
+        }
+    }
+    
     let send_res = stream.write_all(response.as_bytes());
     match send_res {
         Ok(_) => {
