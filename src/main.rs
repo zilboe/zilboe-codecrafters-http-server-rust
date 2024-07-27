@@ -1,5 +1,5 @@
 // Uncomment this block to pass the first stage
-use std::{io::{Read, Write}, net::{TcpListener, TcpStream}};
+use std::{io::{Read, Write}, net::{TcpListener, TcpStream}, thread};
 
 use itertools::Itertools;
 fn stream_send(mut stream: TcpStream, buff: String) {
@@ -70,6 +70,7 @@ fn handle_connect(mut stream: TcpStream) {
 
     stream_send(stream, write_buff);
     
+    
 }
 
 fn main() {
@@ -84,11 +85,11 @@ fn main() {
         match stream {
             Ok(_stream) => {
                 println!("accepted new connection");
-                handle_connect(_stream);
+                thread::spawn(|| {handle_connect(_stream)});
             }
             Err(e) => {
                 println!("error: {}", e);
             }
         }
-    }
+    };
 }
