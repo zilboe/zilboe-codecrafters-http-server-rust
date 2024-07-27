@@ -3,15 +3,14 @@ use std::{io::{Read, Write}, net::{TcpListener, TcpStream}};
 
 use itertools::Itertools;
 fn stream_send(mut stream: TcpStream, buff: String) {
-    let send_res = stream.write_all(buff.as_bytes());
-    match send_res {
+    match stream.write_all(buff.as_bytes()) {
         Ok(_) => {
 
         }
         Err(_) => {
             eprintln!("response error");
         }
-    };
+    }
 }
 
 
@@ -45,7 +44,21 @@ fn handle_connect(mut stream: TcpStream) {
         let write_echo_str = format!("Content-Length: {}\r\n\r\n{}",echo_str_len, echo_str_split_space[0]);
         write_buff.push_str(&write_echo_str);
         //println!("{}", write_buff);
-        println!("{}", write_buff);
+    } else if recv_split[0].starts_with("GET /user-agent"){
+        for user_agent_split in recv_split {
+            if user_agent_split.starts_with("User-Agent: ") {
+                write_buff.push_str("HTTP/1.1 200 OK\r\n");
+                write_buff.push_str("Content-Type: text/plain\r\n");
+
+                let user_agent_head_len: usize = "User-Agent: ".len();
+                let user_agent_head_split: Vec<&str> = user_agent_split[user_agent_head_len..].split(' ').collect_vec();
+                let user_agent_head_len = user_agent_head_split[0].len();
+                let write_user_agent_str = format!("Content-Length: {}\r\n\r\n{}", user_agent_head_len, user_agent_head_split[0]);
+                write_buff.push_str(&write_user_agent_str);
+                break;
+            }
+        };
+
     } else {
         if recv_split[0].starts_with("GET / ") {
             write_buff.push_str("HTTP/1.1 200 OK\r\n\r\n");
