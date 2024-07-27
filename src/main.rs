@@ -1,31 +1,9 @@
 // Uncomment this block to pass the first stage
 use std::{io::{Read, Write}, net::{TcpListener, TcpStream}};
 
-fn handle_connect(mut stream: TcpStream) {
-    let mut read_buff: [u8; 1024] = [0; 1024];
-    let read_res = stream.read(&mut read_buff);
-    match read_res {
-        Ok(_) => {
-
-        }
-        Err(_) => {
-            eprintln!("recv from connect error");
-        }
-    }
-    let index_html_head = String::from("GET /index.html");
-    let none_head = String::from("GET / ");
-    let mut response = String::new();
-    if read_buff.starts_with(&index_html_head.as_bytes()) {
-        response.push_str("HTTP/1.1 200 OK\r\n\r\n");
-    } else {
-        if read_buff.starts_with(&none_head.as_bytes()) {
-            response.push_str("HTTP/1.1 200 OK\r\n\r\n");
-        } else {
-            response.push_str("HTTP/1.1 404 Not Found\r\n\r\n");
-        }
-    }
-    
-    let send_res = stream.write_all(response.as_bytes());
+use itertools::Itertools;
+fn stream_send(mut stream: TcpStream, buff: String) {
+    let send_res = stream.write_all(buff.as_bytes());
     match send_res {
         Ok(_) => {
 
@@ -34,6 +12,50 @@ fn handle_connect(mut stream: TcpStream) {
             eprintln!("response error");
         }
     };
+}
+
+
+fn handle_connect(mut stream: TcpStream) {
+    let mut read_buff: [u8; 1024] = [0; 1024];
+    let read_res = stream.read(&mut read_buff);
+    let recv_string = String::from_utf8((&read_buff).to_vec()).expect("utf-8 to string error");
+    //println!("{}", recv_string);
+    match read_res {
+        Ok(_) => {
+        }
+        Err(_) => {
+            eprintln!("recv from connect error");
+        }
+    }
+    let recv_split: Vec<&str> = recv_string.split("\r\n").collect();
+    let mut write_buff = String::new();
+   
+    if recv_split[0].starts_with("GET /index.html") {
+        write_buff.push_str("HTTP/1.1 200 OK\r\n\r\n");
+    } else if recv_split[0].starts_with("GET /echo/"){
+
+        write_buff.push_str("HTTP/1.1 200 OK\r\n\r\n");
+        write_buff.push_str("Content-Type: text/plain\r\n");
+        let echo_head_len = "GET /echo/".len();
+        
+        let echo_head_str = &recv_split[0][echo_head_len..];
+        let echo_str_split_space: Vec<&str> = echo_head_str.split(' ').collect_vec();
+        let echo_str_len = echo_str_split_space[0].len();
+        //println!("{}", echo_str_split_space[0]);
+        let write_echo_str = format!("Content-Length: {}\r\n\r\n{}",echo_str_len, echo_str_split_space[0]);
+        write_buff.push_str(&write_echo_str);
+        //println!("{}", write_buff);
+
+    } else {
+        if recv_split[0].starts_with("GET / ") {
+            write_buff.push_str("HTTP/1.1 200 OK\r\n\r\n");
+        } else {
+            write_buff.push_str("HTTP/1.1 404 Not Found\r\n\r\n");
+        }
+    }
+
+    stream_send(stream, write_buff);
+    
 }
 
 fn main() {
