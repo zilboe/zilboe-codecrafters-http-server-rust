@@ -34,10 +34,10 @@ fn handle_connect(mut stream: TcpStream) {
         write_buff.push_str("HTTP/1.1 200 OK\r\n\r\n");
     } else if recv_split[0].starts_with("GET /echo/"){
 
-        write_buff.push_str("HTTP/1.1 200 OK\r\n\r\n");
+        write_buff.push_str("HTTP/1.1 200 OK\r\n");
         write_buff.push_str("Content-Type: text/plain\r\n");
+
         let echo_head_len = "GET /echo/".len();
-        
         let echo_head_str = &recv_split[0][echo_head_len..];
         let echo_str_split_space: Vec<&str> = echo_head_str.split(' ').collect_vec();
         let echo_str_len = echo_str_split_space[0].len();
@@ -45,7 +45,7 @@ fn handle_connect(mut stream: TcpStream) {
         let write_echo_str = format!("Content-Length: {}\r\n\r\n{}",echo_str_len, echo_str_split_space[0]);
         write_buff.push_str(&write_echo_str);
         //println!("{}", write_buff);
-
+        println!("{}", write_buff);
     } else {
         if recv_split[0].starts_with("GET / ") {
             write_buff.push_str("HTTP/1.1 200 OK\r\n\r\n");
