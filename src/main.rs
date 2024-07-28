@@ -15,6 +15,7 @@ fn stream_send(mut stream: TcpStream, buff: String) {
 
 fn handle_connect(mut stream: TcpStream) {
     let mut read_buff: [u8; 1024] = [0; 1024];
+    let mut is_gzip: bool = false;
     let read_res = stream.read(&mut read_buff);
     let recv_string = String::from_utf8((&read_buff).to_vec()).expect("utf-8 to string error");
     //println!("{}", recv_string);
@@ -27,13 +28,22 @@ fn handle_connect(mut stream: TcpStream) {
     }
     let recv_split: Vec<&str> = recv_string.split("\r\n").collect();
     let mut write_buff = String::new();
-   
+    
+    for recv_split_one in &recv_split {
+        if recv_split_one.starts_with("Accept-Encoding: gzip") {
+            is_gzip = true;
+        }
+    };
     if recv_split[0].starts_with("GET /index.html") {
         write_buff.push_str("HTTP/1.1 200 OK\r\n\r\n");
     } else if recv_split[0].starts_with("GET /echo/"){
 
         write_buff.push_str("HTTP/1.1 200 OK\r\n");
         write_buff.push_str("Content-Type: text/plain\r\n");
+
+        if is_gzip {
+            write_buff.push_str("Content-Encoding: gzip\r\n");
+        }
 
         let echo_head_len = "GET /echo/".len();
         let echo_head_str = &recv_split[0][echo_head_len..];
@@ -48,6 +58,10 @@ fn handle_connect(mut stream: TcpStream) {
             if user_agent_split.starts_with("User-Agent: ") {
                 write_buff.push_str("HTTP/1.1 200 OK\r\n");
                 write_buff.push_str("Content-Type: text/plain\r\n");
+
+                if is_gzip {
+                    write_buff.push_str("Content-Encoding: gzip\r\n");
+                }
 
                 let user_agent_head_len: usize = "User-Agent: ".len();
                 let user_agent_head_split: Vec<&str> = user_agent_split[user_agent_head_len..].split(' ').collect();
@@ -70,6 +84,11 @@ fn handle_connect(mut stream: TcpStream) {
         if path_file.exists() {
             write_buff.push_str("HTTP/1.1 200 OK\r\n");
             write_buff.push_str("Content-Type: application/octet-stream\r\n");
+
+            if is_gzip {
+                write_buff.push_str("Content-Encoding: gzip\r\n");
+            }
+
             let path_file_open = fs::OpenOptions::new().read(true).open(file_name_head);
             let mut path_file_open = match path_file_open {
                 Ok(file) => file,
@@ -128,7 +147,7 @@ fn handle_connect(mut stream: TcpStream) {
             write_buff.push_str("HTTP/1.1 404 Not Found\r\n\r\n");
         }
     }
-
+    
     stream_send(stream, write_buff);
     
     
