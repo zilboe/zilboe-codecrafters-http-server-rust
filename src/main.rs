@@ -65,7 +65,7 @@ fn handle_connect(mut stream: TcpStream) {
         let file_head_len = "GET /files".len();
         let file_head_str = &recv_split[0][file_head_len..];
         let file_head_split: Vec<&str> = file_head_str.split(' ').collect();
-        let mut file_name = String::from(&arg[1]);
+        let mut file_name = String::from(&arg[2]);
         file_name.push_str(file_head_split[0]);
         let path_file = path::Path::new(&file_name);
         if path_file.exists() {
