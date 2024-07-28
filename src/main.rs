@@ -1,5 +1,5 @@
 // Uncomment this block to pass the first stage
-use std::{env, io::{Read, Write}, net::{TcpListener, TcpStream}, path, thread, fs};
+use std::{env, fs::{self, File}, io::{Read, Write}, net::{TcpListener, TcpStream}, path, thread};
 
 fn stream_send(mut stream: TcpStream, buff: String) {
     match stream.write_all(buff.as_bytes()) {
@@ -61,17 +61,16 @@ fn handle_connect(mut stream: TcpStream) {
 
     } else if recv_split[0].starts_with("GET /files") {
         let arg: Vec<String> = env::args().collect();   //env arg
-
+        let mut file_name_head = String::from(&arg[2]);
         let file_head_len = "GET /files".len();
         let file_head_str = &recv_split[0][file_head_len..];
         let file_head_split: Vec<&str> = file_head_str.split(' ').collect();
-        let mut file_name = String::from(&arg[2]);
-        file_name.push_str(file_head_split[0]);
-        let path_file = path::Path::new(&file_name);
+        file_name_head.push_str(file_head_split[0]);
+        let path_file = path::Path::new(&file_name_head);
         if path_file.exists() {
             write_buff.push_str("HTTP/1.1 200 OK\r\n");
             write_buff.push_str("Content-Type: application/octet-stream\r\n");
-            let path_file_open = fs::OpenOptions::new().read(true).open(file_name);
+            let path_file_open = fs::OpenOptions::new().read(true).open(file_name_head);
             let mut path_file_open = match path_file_open {
                 Ok(file) => file,
                 Err(_) => {
@@ -96,8 +95,33 @@ fn handle_connect(mut stream: TcpStream) {
         } else {
             write_buff.push_str("HTTP/1.1 404 Not Found\r\n\r\n");
         }
-    } 
-    else {
+    } else if recv_split[0].starts_with("POST /files/") {
+        let arg: Vec<String> = env::args().collect();   //env arg
+        let file_name_head = String::from(&arg[2]);     //Get ENV Path
+        let post_head_len = "POST /files/".len();           
+        let post_head_str_split = &recv_split[0][post_head_len..];      //Get POST request index
+        let post_head_str: Vec<&str> = post_head_str_split.split(' ').collect();    //Get POST request filename
+
+        let post_head_filename = file_name_head + &post_head_str[0];    //Get The Whole Filename including path
+        
+        
+        let request_post_content = recv_split.len();    //Get POST request Content
+        let request_post_content = recv_split[request_post_content-1];  //Get POST content
+        //println!("{}", post_head_filename);
+        for get_post_recv_head in recv_split {
+            if get_post_recv_head.starts_with("Content-Length:") {
+                let skip_post_content_len = "Content-Length: ".len();
+                let get_post_content_size = &get_post_recv_head[skip_post_content_len..];
+                let get_post_content_size: usize = get_post_content_size.parse().expect("POST: Get content-len Error");
+
+                let mut create_file: File = fs::File::create(post_head_filename.clone()).expect("create file error");
+                let request_post_content = &request_post_content[..get_post_content_size];
+                create_file.write(request_post_content.as_bytes()).expect("POST: write data to file error");
+                
+                write_buff.push_str("HTTP/1.1 201 Created\r\n\r\n");
+            }
+        }
+    } else {
         if recv_split[0].starts_with("GET / ") {
             write_buff.push_str("HTTP/1.1 200 OK\r\n\r\n");
         } else {
