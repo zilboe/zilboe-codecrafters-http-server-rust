@@ -1,7 +1,6 @@
 // Uncomment this block to pass the first stage
-use std::{io::{Read, Write}, net::{TcpListener, TcpStream}, thread};
+use std::{env, io::{Read, Write}, net::{TcpListener, TcpStream}, path, thread, fs};
 
-use itertools::Itertools;
 fn stream_send(mut stream: TcpStream, buff: String) {
     match stream.write_all(buff.as_bytes()) {
         Ok(_) => {
@@ -38,7 +37,7 @@ fn handle_connect(mut stream: TcpStream) {
 
         let echo_head_len = "GET /echo/".len();
         let echo_head_str = &recv_split[0][echo_head_len..];
-        let echo_str_split_space: Vec<&str> = echo_head_str.split(' ').collect_vec();
+        let echo_str_split_space: Vec<&str> = echo_head_str.split(' ').collect();
         let echo_str_len = echo_str_split_space[0].len();
         
         let write_echo_str = format!("Content-Length: {}\r\n\r\n{}",echo_str_len, echo_str_split_space[0]);
@@ -51,7 +50,7 @@ fn handle_connect(mut stream: TcpStream) {
                 write_buff.push_str("Content-Type: text/plain\r\n");
 
                 let user_agent_head_len: usize = "User-Agent: ".len();
-                let user_agent_head_split: Vec<&str> = user_agent_split[user_agent_head_len..].split(' ').collect_vec();
+                let user_agent_head_split: Vec<&str> = user_agent_split[user_agent_head_len..].split(' ').collect();
                 let user_agent_head_len = user_agent_head_split[0].len();
 
                 let write_user_agent_str = format!("Content-Length: {}\r\n\r\n{}", user_agent_head_len, user_agent_head_split[0]);
@@ -60,7 +59,45 @@ fn handle_connect(mut stream: TcpStream) {
             }
         };
 
-    } else {
+    } else if recv_split[0].starts_with("GET /files") {
+        let arg: Vec<String> = env::args().collect();   //env arg
+
+        let file_head_len = "GET /files".len();
+        let file_head_str = &recv_split[0][file_head_len..];
+        let file_head_split: Vec<&str> = file_head_str.split(' ').collect();
+        let mut file_name = String::from(&arg[1]);
+        file_name.push_str(file_head_split[0]);
+        let path_file = path::Path::new(&file_name);
+        if path_file.exists() {
+            write_buff.push_str("HTTP/1.1 200 OK\r\n");
+            write_buff.push_str("Content-Type: application/octet-stream\r\n");
+            let path_file_open = fs::OpenOptions::new().read(true).open(file_name);
+            let mut path_file_open = match path_file_open {
+                Ok(file) => file,
+                Err(_) => {
+                    println!("open file error");
+                    return;
+                }
+            };
+            let mut file_open_buff: Vec<u8> = Vec::new();
+            match path_file_open.read_to_end(&mut file_open_buff) {
+                Ok(_) => {
+                    let file_buffer_len = file_open_buff.len();
+                    let file_open_buff_to_string =  String::from_utf8_lossy(&file_open_buff);
+                    let write_file_buff = format!("Content-Length: {}\r\n\r\n{}", file_buffer_len, file_open_buff_to_string);
+                    write_buff.push_str(&write_file_buff);
+                }
+                Err(_) => {
+                    println!("read file to buffer error");
+                    return;
+                }
+            }
+
+        } else {
+            write_buff.push_str("HTTP/1.1 404 Not Found\r\n\r\n");
+        }
+    } 
+    else {
         if recv_split[0].starts_with("GET / ") {
             write_buff.push_str("HTTP/1.1 200 OK\r\n\r\n");
         } else {
@@ -76,7 +113,7 @@ fn handle_connect(mut stream: TcpStream) {
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     println!("Logs from your program will appear here!");
-
+    
     // Uncomment this block to pass the first stage
     //
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
