@@ -31,8 +31,10 @@ fn handle_connect(mut stream: TcpStream) {
     
     for recv_split_one in &recv_split {
         if recv_split_one.starts_with("Accept-Encoding:") {
-            let recv_split_one_encoding: Vec<&str> = recv_split_one.split(',').collect();
-            for recv_encoding_split in &recv_split_one_encoding {
+            let recv_split_skip_encoding_head = "Accept-Encoding:".len();
+            let recv_split_skip_encoding = &recv_split_one[recv_split_skip_encoding_head..];
+            let recv_split_one_encoding: Vec<&str> = recv_split_skip_encoding.split(',').collect();
+            for recv_encoding_split in recv_split_one_encoding {
                 if recv_encoding_split.trim().starts_with("gzip") {
                     is_gzip = true;
                 }
