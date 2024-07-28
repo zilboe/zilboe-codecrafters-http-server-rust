@@ -30,8 +30,13 @@ fn handle_connect(mut stream: TcpStream) {
     let mut write_buff = String::new();
     
     for recv_split_one in &recv_split {
-        if recv_split_one.starts_with("Accept-Encoding: gzip") {
-            is_gzip = true;
+        if recv_split_one.starts_with("Accept-Encoding:") {
+            let recv_split_one_encoding: Vec<&str> = recv_split_one.split(',').collect();
+            for recv_encoding_split in &recv_split_one_encoding {
+                if recv_encoding_split.trim().starts_with("gzip") {
+                    is_gzip = true;
+                }
+            }
         }
     };
     if recv_split[0].starts_with("GET /index.html") {
