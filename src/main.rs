@@ -1,6 +1,8 @@
 // Uncomment this block to pass the first stage
 use std::{env, fs::{self, File}, io::{Read, Write}, net::{TcpListener, TcpStream}, path, thread};
-
+use flate2::write::{GzEncoder};
+use flate2::Compression;
+use nom::AsChar;
 fn stream_send(mut stream: TcpStream, buff: String) {
     match stream.write_all(buff.as_bytes()) {
         Ok(_) => {
@@ -57,8 +59,22 @@ fn handle_connect(mut stream: TcpStream) {
         let echo_str_split_space: Vec<&str> = echo_head_str.split(' ').collect();
         let echo_str_len = echo_str_split_space[0].len();
         
-        let write_echo_str = format!("Content-Length: {}\r\n\r\n{}",echo_str_len, echo_str_split_space[0]);
-        write_buff.push_str(&write_echo_str);
+        
+
+        if is_gzip {
+            let mut e = GzEncoder::new(Vec::new(), Compression::default());
+            e.write_all(echo_str_split_space[0].as_bytes()).expect("Turn Buff Gzip U8 Error");
+            let write_encoder: Vec<u8> = e.finish().expect("gzip Error");
+            let write_echo_str = format!("Content-Length: {}\r\n\r\n",write_encoder.len());
+            write_buff.push_str(&write_echo_str);
+            for i in write_encoder {
+                write_buff.push(i.as_char());
+            }
+        } else {
+            let write_echo_str = format!("Content-Length: {}\r\n\r\n",echo_str_len);
+            write_buff.push_str(&write_echo_str);
+            write_buff.push_str(&echo_str_split_space[0]);
+        }
         
     } else if recv_split[0].starts_with("GET /user-agent"){
         for user_agent_split in recv_split {
@@ -74,8 +90,23 @@ fn handle_connect(mut stream: TcpStream) {
                 let user_agent_head_split: Vec<&str> = user_agent_split[user_agent_head_len..].split(' ').collect();
                 let user_agent_head_len = user_agent_head_split[0].len();
 
-                let write_user_agent_str = format!("Content-Length: {}\r\n\r\n{}", user_agent_head_len, user_agent_head_split[0]);
-                write_buff.push_str(&write_user_agent_str);
+                if is_gzip {
+                    let mut e = GzEncoder::new(Vec::new(), Compression::default());
+                    e.write_all(user_agent_head_split[0].as_bytes()).expect("Turn Buff Gzip U8 Error");
+                    let write_encoder: Vec<u8> = e.finish().expect("gzip Error");
+                    let write_user_agent_str = format!("Content-Length: {}\r\n\r\n", write_encoder.len());
+                    write_buff.push_str(&write_user_agent_str);
+                    for i in write_encoder {
+                        write_buff.push(i.as_char());
+                    }
+                } else {
+                    let write_user_agent_str = format!("Content-Length: {}\r\n\r\n", user_agent_head_len);
+                    write_buff.push_str(&write_user_agent_str);
+                    write_buff.push_str(&user_agent_head_split[0]);
+                }
+
+
+                
                 break;
             }
         };
@@ -109,8 +140,22 @@ fn handle_connect(mut stream: TcpStream) {
                 Ok(_) => {
                     let file_buffer_len = file_open_buff.len();
                     let file_open_buff_to_string =  String::from_utf8_lossy(&file_open_buff);
-                    let write_file_buff = format!("Content-Length: {}\r\n\r\n{}", file_buffer_len, file_open_buff_to_string);
-                    write_buff.push_str(&write_file_buff);
+
+                    if is_gzip {
+                        let mut e = GzEncoder::new(Vec::new(), Compression::default());
+                        e.write_all(&file_open_buff).expect("Turn Buff Gzip U8 Error");
+                        let write_encoder: Vec<u8> = e.finish().expect("gzip Error");
+                        let write_file_buff = format!("Content-Length: {}\r\n\r\n", write_encoder.len());
+                        write_buff.push_str(&write_file_buff);
+                        for i in write_encoder {
+                            write_buff.push(i.as_char());
+                        }
+                    } else {
+                        let write_file_buff = format!("Content-Length: {}\r\n\r\n", file_buffer_len);
+                        write_buff.push_str(&write_file_buff);
+                        write_buff.push_str(&file_open_buff_to_string);
+                    }
+
                 }
                 Err(_) => {
                     println!("read file to buffer error");
