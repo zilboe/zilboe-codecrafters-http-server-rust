@@ -48,11 +48,11 @@ fn handle_connect(mut stream: TcpStream) {
     } else if recv_split[0].starts_with("GET /echo/"){
 
         write_buff.push_str("HTTP/1.1 200 OK\r\n");
-        write_buff.push_str("Content-Type: text/plain\r\n");
-
         if is_gzip {
             write_buff.push_str("Content-Encoding: gzip\r\n");
         }
+
+        write_buff.push_str("Content-Type: text/plain\r\n");
 
         let echo_head_len = "GET /echo/".len();
         let echo_head_str = &recv_split[0][echo_head_len..];
@@ -80,11 +80,11 @@ fn handle_connect(mut stream: TcpStream) {
         for user_agent_split in recv_split {
             if user_agent_split.starts_with("User-Agent: ") {
                 write_buff.push_str("HTTP/1.1 200 OK\r\n");
-                write_buff.push_str("Content-Type: text/plain\r\n");
-
                 if is_gzip {
                     write_buff.push_str("Content-Encoding: gzip\r\n");
                 }
+                write_buff.push_str("Content-Type: text/plain\r\n");
+
 
                 let user_agent_head_len: usize = "User-Agent: ".len();
                 let user_agent_head_split: Vec<&str> = user_agent_split[user_agent_head_len..].split(' ').collect();
@@ -121,11 +121,11 @@ fn handle_connect(mut stream: TcpStream) {
         let path_file = path::Path::new(&file_name_head);
         if path_file.exists() {
             write_buff.push_str("HTTP/1.1 200 OK\r\n");
-            write_buff.push_str("Content-Type: application/octet-stream\r\n");
-
             if is_gzip {
                 write_buff.push_str("Content-Encoding: gzip\r\n");
             }
+            write_buff.push_str("Content-Type: application/octet-stream\r\n");
+
 
             let path_file_open = fs::OpenOptions::new().read(true).open(file_name_head);
             let mut path_file_open = match path_file_open {
