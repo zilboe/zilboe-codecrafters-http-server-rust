@@ -1,6 +1,6 @@
 // Uncomment this block to pass the first stage
 use std::{env, fs::{self, File}, io::{Read, Write}, net::{TcpListener, TcpStream}, path, thread};
-use flate2::write::{self, GzEncoder};
+use flate2::write::{GzEncoder};
 use flate2::Compression;
 use nom::AsChar;
 fn stream_send(mut stream: TcpStream, buff: String) {
@@ -66,7 +66,7 @@ fn handle_connect(mut stream: TcpStream) {
             let write_encoder: Vec<u8> = e.finish().expect("gzip Error");
             let write_echo_str = format!("Content-Length: {}\r\n\r\n",write_encoder.len());
             write_buff.push_str(&write_echo_str);
-            for i in write_encoder {
+            for i in &write_encoder {
                 write_buff.push(i.as_char());
             }
         } else {
@@ -95,7 +95,7 @@ fn handle_connect(mut stream: TcpStream) {
                     let write_encoder: Vec<u8> = e.finish().expect("gzip Error");
                     let write_user_agent_str = format!("Content-Length: {}\r\n\r\n", write_encoder.len());
                     write_buff.push_str(&write_user_agent_str);
-                    for i in write_encoder {
+                    for i in &write_encoder {
                         write_buff.push(i.as_char());
                     }
                 } else {
@@ -145,7 +145,7 @@ fn handle_connect(mut stream: TcpStream) {
                         let write_encoder: Vec<u8> = e.finish().expect("gzip Error");
                         let write_file_buff = format!("Content-Length: {}\r\n\r\n", write_encoder.len());
                         write_buff.push_str(&write_file_buff);
-                        for i in write_encoder {
+                        for i in &write_encoder {
                             write_buff.push(i.as_char());
                         }
                     } else {
