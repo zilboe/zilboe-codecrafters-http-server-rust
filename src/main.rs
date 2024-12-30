@@ -1,6 +1,8 @@
 // Uncomment this block to pass the first stage
 use flate2::write::{self, GzEncoder};
 use flate2::Compression;
+use nom::FindSubstring;
+use std::arch::x86_64::_CMP_FALSE_OQ;
 use std::io::{self, Read, Write};
 use anyhow::Result;
 use httparse::{Request, EMPTY_HEADER};
@@ -14,6 +16,7 @@ struct WebRequest{
     stream: TcpStream,
     // request_parse: Request<'a, 'a>,
     keep_alive: bool,
+    is_gzip: bool,
     uri_path: Option<String>,
 }
 
@@ -24,6 +27,7 @@ impl WebRequest {
             stream: stream,
             // request_parse: Request::new(&mut header),
             keep_alive: false,
+            is_gzip: false,
             uri_path: None,
         }
     }
@@ -43,9 +47,19 @@ impl WebRequest {
             }
             self.uri_path = Some(uri_path_name);
         }
-        println!("uri name {:?}", self.uri_path);
+        // println!("uri name {:?}", self.uri_path);
         Ok(())
     }
+
+    fn set_Gzip(&mut self, encoding: &str) -> io::Result<()> {
+        if let Some(_) = encoding.find_substring("gzip") {
+            self.is_gzip = true
+        } else {
+            self.is_gzip = false
+        }
+        Ok(())
+    }
+
     fn close(&mut self) -> io::Result<()> {
         if !self.keep_alive {
             let _ = self.stream.shutdown();
@@ -55,11 +69,14 @@ impl WebRequest {
 }
 fn process_content(stream: TcpStream, recv_buff: &[u8]){
     let mut one_request = WebRequest::new(stream);
+    
     let mut header = [httparse::EMPTY_HEADER; 64];
     let mut request = Request::new(&mut header);
     request.parse(&recv_buff).unwrap();
 
     let _ = one_request.get_path(&request.path.unwrap());
+
+
 
     // println!("uri_path {:?}", one_request.uri_path.unwrap());
 
@@ -68,7 +85,7 @@ fn process_content(stream: TcpStream, recv_buff: &[u8]){
 }
 
 async fn handle_connect(mut stream: TcpStream) {
-    let mut read_buff: [u8; 1024] = [0; 1024];
+    let mut read_buff: [u8; 512] = [0; 512];
     let _ = stream.read(&mut read_buff).await;
     process_content(stream, &mut read_buff);
     
