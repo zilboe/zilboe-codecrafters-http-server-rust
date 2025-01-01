@@ -9,6 +9,9 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 
+// we need some error process such as 404 page
+// so we add this MyError including the err_data
+// that we can delivery the code
 struct MyError {
     message: String,
     err_data: Vec<u8>,
@@ -22,7 +25,7 @@ impl From<io::Error> for MyError {
     }
 }
 
-/// HTTP Config
+/// HTTP Config, it doesn't require much configuration
 struct WebRequest{
     http_stream: TcpStream,
     keep_alive: bool,
@@ -40,34 +43,9 @@ impl WebRequest {
         }
     }
 
-    fn set_file_path_isexist(&mut self, file_name: &str) -> Result<Vec<u8>, MyError> {
-        let env_arg: Vec<String> = env::args().collect();
-        let mut response_code: Vec<u8> = Vec::new();
-        if env_arg.len() < 2 {
-            response_code.extend_from_slice(b"HTTP/1.1 404 OK\r\n\r\n");
-            Err(MyError{
-                message: "404 NO FOUND".to_string(),
-                err_data: response_code,
-            })
-        } else {
-            let take_uri_path = file_name;
-            let env_file_path = env_arg[1].as_str().to_owned() + take_uri_path;
-            let path_file: &Path = Path::new(&env_file_path);
-            if path_file.exists() {
-                self.uri_path = self.uri_path.replace(env_file_path);
-                response_code.extend_from_slice(b"HTTP/1.1 200 OK\r\n");
-                Ok(response_code)
-            } else {
-                response_code.extend_from_slice(b"HTTP/1.1 404 OK\r\n\r\n");
-                Err(MyError{
-                    message: "404 FILE NO FOUND".to_string(),
-                    err_data: response_code,
-                })
-            }
-        }
-    }
-
-    // we need handle the uri_path which is ending end with '/'
+    // The entire access path and access parameter 
+    // processing need to determine the local file 
+    // and needs to fill in the content-type tag
     fn get_path(&mut self, uri_path: &str) -> Result<Vec<u8>, MyError> {
         let mut uri_path_name = String::from(uri_path);
 
@@ -112,16 +90,55 @@ impl WebRequest {
         }//404 NO FOUND
     }
 
+    // need to check that the file exists and pass 
+    // the full file name to the uri_path parameter
+    // and pass the response code 200 and 404 
+    fn set_file_path_isexist(&mut self, file_name: &str) -> Result<Vec<u8>, MyError> {
+        let env_arg: Vec<String> = env::args().collect();
+        let mut response_code: Vec<u8> = Vec::new();
+        if env_arg.len() < 2 {
+            response_code.extend_from_slice(b"HTTP/1.1 404 OK\r\n\r\n");
+            Err(MyError{
+                message: "404 NO FOUND".to_string(),
+                err_data: response_code,
+            })
+        } else {
+            let take_uri_path = file_name;
+            let env_file_path = env_arg[1].as_str().to_owned() + take_uri_path;
+            let path_file: &Path = Path::new(&env_file_path);
+            if path_file.exists() {
+                self.uri_path = self.uri_path.replace(env_file_path);
+                response_code.extend_from_slice(b"HTTP/1.1 200 OK\r\n");
+                Ok(response_code)
+            } else {
+                response_code.extend_from_slice(b"HTTP/1.1 404 OK\r\n\r\n");
+                Err(MyError{
+                    message: "404 FILE NO FOUND".to_string(),
+                    err_data: response_code,
+                })
+            }
+        }
+    }
+
+    // Determine whether to enable gzip compression
     fn set_gzip_config(&mut self, recv_buff: &str) -> io::Result<()> {
         self.is_gzip = recv_buff.find_substring("gzip").is_some();
         Ok(())
     }
 
+    // Check whether the keepalive parameter exists
     fn set_keepalive_config(&mut self, recv_buff: &str) -> io::Result<()> {
         self.keep_alive = eq(recv_buff, "true");
         Ok(())
     }
 
+    // The entire response header portion is processed from the 
+    // time the recv_buffer is received until the data is finally processed 
+    // and the data to be sent is returned.
+    // Use the parsing method of httparse library, it is zero copy parsing,
+    // so the speed will be relatively faster, 
+    // at present is about the use of each request processing if, 
+    // then consider modifying to a more standard processing
     fn fill_response(&mut self, recv_buff: &[u8]) -> Vec<u8> {
         // we need parse the header, so i alloc httparse named header
         let mut header = [httparse::EMPTY_HEADER; 32];
@@ -141,8 +158,6 @@ impl WebRequest {
             }
         };
 
-        
-        //then we need extract the useful key-value. for me,i extract the encoding,keepalive...
         for header_item in header {
             if header_item.name.eq_ignore_ascii_case("Accept-Encoding") {
                     let _ = self.set_gzip_config(std::str::from_utf8(header_item.value).unwrap());
@@ -152,11 +167,12 @@ impl WebRequest {
             }
         }
         
+        // Whether to select file compression
         if self.is_gzip {
             write_buff.extend_from_slice(b"Content-Encoding: gzip\r\n");
         }
+        
         write_buff
-
     }
 
     async fn send(&mut self, write_buff: &[u8]) -> io::Result<()> {
