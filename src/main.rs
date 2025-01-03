@@ -1,14 +1,18 @@
 // Uncomment this block to pass the first stage
-use flate2::write::{self, GzEncoder};
+use flate2::write::GzEncoder;
 use flate2::Compression;
 use httparse::Request;
 use nom::FindSubstring;
 use std::io::Read;
 use std::path::Path;
-use std::{env, fs::File, io, ptr::eq};
+use std::{
+    env,
+    io::{self as other_io, Write},
+    ptr::eq,
+};
 use std::{fs, vec};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{self, AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
 };
 
@@ -34,7 +38,6 @@ struct WebRequest {
     keep_alive: bool,
     is_gzip: bool,
     uri_path: Option<String>,
-    file_exist: bool,
 }
 
 impl WebRequest {
@@ -44,7 +47,6 @@ impl WebRequest {
             keep_alive: false,
             is_gzip: false,
             uri_path: None,
-            file_exist: false,
         }
     }
 
@@ -101,7 +103,6 @@ impl WebRequest {
         let env_arg: Vec<String> = env::args().collect();
         let mut response_code: Vec<u8> = Vec::new();
         if env_arg.len() < 2 {
-            self.file_exist = false;
             response_code.extend_from_slice(b"HTTP/1.1 404 OK\r\n\r\n");
             Err(MyError {
                 message: "404 NO FOUND".to_string(),
@@ -112,15 +113,11 @@ impl WebRequest {
             let env_file_path = env_arg[1].as_str().to_owned() + take_uri_path;
             let path_file: &Path = Path::new(&env_file_path);
             if path_file.exists() {
-                println!("{:?}", self.uri_path);
-                self.uri_path = self.uri_path.replace(env_file_path);
-                println!("{:?}", self.uri_path);
-                self.file_exist = true;
+                self.uri_path = Some(env_file_path);
                 response_code.extend_from_slice(b"HTTP/1.1 200 OK\r\n");
                 Ok(response_code)
             } else {
                 response_code.extend_from_slice(b"HTTP/1.1 404 OK\r\n\r\n");
-                self.file_exist = false;
                 Err(MyError {
                     message: "404 FILE NO FOUND".to_string(),
                     err_data: response_code,
@@ -131,40 +128,57 @@ impl WebRequest {
 
     fn fill_file_buffer(&mut self) -> Result<Vec<u8>, MyError> {
         let mut file_buffer: Vec<u8> = Vec::new();
-        println!("{:?}", self.uri_path);
-        if self.file_exist {
-            let path = match &self.uri_path {
-                Some(path) => path,
-                None => {
-                    return Err(MyError {
-                        message: "Don't Open The File".to_string(),
-                        err_data: file_buffer,
-                    })
+        let path = match &self.uri_path {
+            Some(path) => path,
+            None => {
+                file_buffer.extend_from_slice(b"Content-Length: 0\r\n\r\n");
+                return Err(MyError {
+                    message: "Don't Open The File".to_string(),
+                    err_data: file_buffer,
+                });
+            }
+        };
+        match fs::OpenOptions::new().read(true).open(path) {
+            Ok(mut open_file) => match open_file.read_to_end(&mut file_buffer) {
+                Ok(_) => {
+                    if self.is_gzip {
+                        let mut gzip = GzEncoder::new(Vec::new(), Compression::default());
+                        let ret_buff = match gzip.write_all(&mut file_buffer) {
+                            Ok(_) => match gzip.finish() {
+                                Ok(buffer) => buffer,
+                                Err(e) => {
+                                    let ret_err_buff =
+                                        format!("Content-Length: 0\r\n\r\n").as_bytes().to_vec();
+                                    return Err(MyError {
+                                        message: e.to_string(),
+                                        err_data: ret_err_buff,
+                                    });
+                                }
+                            },
+                            Err(e) => {
+                                let ret_err_buff =
+                                    format!("Content-Length: 0\r\n\r\n").as_bytes().to_vec();
+                                return Err(MyError {
+                                    message: e.to_string(),
+                                    err_data: ret_err_buff,
+                                });
+                            }
+                        };
+                        let file_buffer_size =
+                            format!("Content-Length: {}\r\n\r\n", ret_buff.len())
+                                .as_bytes()
+                                .to_vec();
+                        let write_buffer = vec![file_buffer_size, ret_buff].concat();
+                        Ok(write_buffer)
+                    } else {
+                        let write_file_size: Vec<u8> =
+                            format!("Content-Length: {}\r\n\r\n", file_buffer.len())
+                                .as_bytes()
+                                .to_vec();
+                        let write_buffer = vec![write_file_size, file_buffer].concat();
+                        Ok(write_buffer)
+                    }
                 }
-            };
-            match fs::OpenOptions::new().read(true).open(path) {
-                Ok(mut open_file) => match open_file.read_to_end(&mut file_buffer) {
-                    Ok(_) => {
-                        if self.is_gzip {
-                            Ok(file_buffer)
-                        } else {
-                            let write_file_size: Vec<u8> =
-                                format!("Content-Length: {}\r\n\r\n", file_buffer.len())
-                                    .as_bytes()
-                                    .to_vec();
-                            let write_buffer = vec![write_file_size, file_buffer].concat();
-                            println!("{:?}", write_buffer);
-                            Ok(write_buffer)
-                        }
-                    }
-                    Err(e) => {
-                        file_buffer.extend_from_slice(b"Content-Length: 0\r\n\r\n");
-                        Err(MyError {
-                            message: e.to_string(),
-                            err_data: file_buffer,
-                        })
-                    }
-                },
                 Err(e) => {
                     file_buffer.extend_from_slice(b"Content-Length: 0\r\n\r\n");
                     Err(MyError {
@@ -172,13 +186,14 @@ impl WebRequest {
                         err_data: file_buffer,
                     })
                 }
+            },
+            Err(e) => {
+                file_buffer.extend_from_slice(b"Content-Length: 0\r\n\r\n");
+                Err(MyError {
+                    message: e.to_string(),
+                    err_data: file_buffer,
+                })
             }
-        } else {
-            file_buffer.extend_from_slice(b"Content-Length: 0\r\n\r\n");
-            Err(MyError {
-                message: "Don't Open The File".to_string(),
-                err_data: file_buffer,
-            })
         }
     }
 
@@ -203,9 +218,8 @@ impl WebRequest {
     // then consider modifying to a more standard processing
     fn fill_response(&mut self, recv_buff: &[u8]) -> Vec<u8> {
         // we need parse the header, so i alloc httparse named header
-        let mut header = [httparse::EMPTY_HEADER; 32];
+        let mut header = [httparse::EMPTY_HEADER; 64];
         let mut request = Request::new(&mut header);
-
         // execute parse
         request.parse(recv_buff).unwrap();
 
@@ -249,9 +263,9 @@ impl WebRequest {
     }
 
     async fn close(&mut self) {
-        // if !self.keep_alive {
-        let _ = self.http_stream.shutdown().await;
-        // }
+        if !self.keep_alive {
+            let _ = self.http_stream.shutdown().await;
+        }
     }
 }
 
@@ -263,7 +277,7 @@ async fn process_content(stream: TcpStream, recv_buff: &[u8]) {
 }
 
 async fn handle_connect(mut stream: TcpStream) {
-    let mut read_buff: [u8; 512] = [0; 512];
+    let mut read_buff: [u8; 1024] = [0; 1024];
     let _ = stream.read(&mut read_buff).await;
     process_content(stream, &read_buff).await;
 
